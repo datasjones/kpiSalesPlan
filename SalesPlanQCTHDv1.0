@@ -1,0 +1,321 @@
+  /*
+      View: SalesPlan1
+      Purpose: This view is a union of THD Sales, THD Sales Plan, QC Sales Current Year, QC Sales Last Year, and QC Sales Plan. 
+      The goal is to create a unioned view of all sales numbers and create further calculations in Tableau.
+      Author: Sarah Jones Linnell
+      Create Date: 11/8/2018
+      ChangeLog: 
+        Change:  Added sustainable date joins (i.e. not relying on "-1").
+        Author: SJL
+        Change Date: 2/12/2019 
+      */
+CREATE or REPLACE TABLE `np-quotecenter.temp_sjl.SalesPlanQCTHD` as
+(SELECT
+  'THD Total Sales' AS Metric,
+  CAST(clsl.STR_NBR AS INT64) STR_NBR,
+  CAST(clsl.DEPT_NBR as STRING) AS DEPT_NBR,
+  CAST(CLASS_NBR as STRING) CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  fc.FiscalYear AS FiscalYear,
+  fc.FiscalWeekNbr AS FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLast,
+  SUM(SLS_AMT) AS SalesAmt
+FROM
+  `pr-edw-views-thd.SLS.CLASS_STR_DAY_SLS` clsl
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(clsl.SLS_DT AS Date) = FC.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(clsl.STR_NBR AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  FiscalYear >= (
+  SELECT
+    FiscalYear
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) )
+    AND SLS_DT <= DATE_TRUNC(current_date, week(SUNDAY))
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15
+UNION ALL
+--Below includes THD Plan Sales, current year.
+SELECT
+  'THD Plan' AS Metric,
+  CAST(clpl.STR_NBR AS INT64) STR_NBR,
+  CAST(MER_DEPT_NBR as STRING) AS DEPT_NBR,
+  CAST(MER_CLASS_NBR as STRING) AS CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FSCL_YR AS FiscalYear,
+  FSCL_WK_NBR AS FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLast,
+  SUM(SLS_PLN_AMT) AS SalesAmt
+FROM
+  `pr-edw-views-thd.FIN_PLAN.STR_CLASS_PLN_WKLY`clpl
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(clpl.FSCL_WK_END_DT AS Date) = FC.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(clpl.STR_NBR AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  FiscalYear >= (
+  SELECT
+    FiscalYear
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) )
+    AND FSCL_WK_END_DT <= DATE_TRUNC(current_date, week(SUNDAY))
+
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15
+UNION ALL
+--Below includes QC Current Year to Date Sales
+SELECT
+  'QC Current YTD Sales' AS Metric,
+  StoreNbr AS STR_NBR,
+  CAST(MerchandiseDepartmentNbr as STRING) AS DEPT_NBR,
+  CAST(MerchandiseClassNbr as STRING) AS CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FiscalYr AS FiscalYear,
+  FiscalYearWeekNbr as FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+    (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLast,
+  SUM(RetailSaleAmt) AS SalesAmt
+FROM
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`QCSalesAttribution` sa
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(sa.firstsolddt AS Date) = fc.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(sa.StoreNbr AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  FiscalYear >= (
+  SELECT
+    FiscalYear
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)))
+    AND FirstSoldDt <= DATE_TRUNC(current_date, week(SUNDAY)) 
+  AND MappedOrderSrc IN ('QC','COPY')
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15
+UNION ALL
+--Below includes QC Sales, last year.
+SELECT
+  'QC Last YTD Sales' AS Metric,
+  StoreNbr AS STR_NBR,
+  CAST(MerchandiseDepartmentNbr as STRING) AS DEPT_NBR,
+  CAST(MerchandiseClassNbr as STRING) AS CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FiscalYr AS FiscalYear,
+ FiscalYearWeekNbr as FiscalWeekNbr,
+ (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLast,
+  SUM(RetailSaleAmt) AS SalesAmt
+FROM
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`QCSalesAttribution` sa
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` edwfc
+ON
+  CAST(sa.firstsolddt AS Date) = edwfc.CAL_DT
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(sa.StoreNbr AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+ --This determines YTD for Last year
+  CAST(FirstSoldDt as DATE) >= (SELECT LY_COMP_FSCL_YR_BGN_DT FROM `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` WHERE CAL_DT = DATE_TRUNC(current_date, week(SUNDAY)) ) 
+  AND FirstSoldDt <= (SELECT LY_COMP_FSCL_WK_END_DT FROM `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` WHERE CAL_DT = DATE_TRUNC(current_date, week(SUNDAY)) )
+  AND MappedOrderSrc IN ('QC',
+    'COPY')
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15
+UNION ALL
+SELECT
+  'QC Sales Plan' AS Metric,
+  0 AS STR_NBR,
+  Merch_Department AS DEPT_NBR,
+  Class_Number AS CLASS_NBR,
+  'n/a'  as StoreNm,
+  'n/a' as MarketNbr,
+  'n/a' as MarketNm,
+  SUBSTR(Region,0,4) as RegionNbr,
+  SUBSTR(Region,6,25) as  RegionNm,
+  'n/a' as DivisionNbr,
+  'n/a' as DivisionNm,
+  2019 AS FiscalYear,
+ Fiscal_Week as FiscalWeekNbr,
+ (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLast,
+  Total_Sales_Plan AS SalesAmt
+FROM
+  `np-quotecenter.analytics_uat.tbl_Sales_Plan_2019_by_dimensions` sap
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  SUBSTR(Region,0,4) = RGN.RGN_NBR
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16)

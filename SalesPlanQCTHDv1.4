@@ -1,0 +1,344 @@
+  /*
+      View: SalesPlan1.1
+      Purpose: This view is a union of THD Sales, THD Sales Plan, QC Sales Current Year, QC Sales Last Year, and QC Sales Plan. 
+      The goal is to create a unioned view of all sales numbers and create further calculations in Tableau.
+      Author: Sarah Jones Linnell
+      Create Date: 11/8/2018
+      ChangeLog: 
+        Change:  Added sustainable date joins (i.e. not relying on "-1").
+        Author: SJL
+        Change Date: 2/12/2019 
+        Change:  Added subdept, where available. Fixed all subdepts so that there are no leading zeros.
+        Author: SJL
+        Change Date: 2/15/2019 
+        Change:  Added subclass, where available. Correct amount for THD sales plan.
+        Author: SJL
+        Change Date: 2/22/2019 
+      */
+-- CREATE or REPLACE TABLE `np-quotecenter.temp_sjl.SalesPlanQCTHD` as
+-- (
+SELECT
+  'THD Total Sales' AS Metric,
+  CAST(sa.STR_NBR as INT64) AS STR_NBR,
+  CAST(DEPT_NBR as STRING) AS DEPT_NBR,
+  CASE WHEN SUBSTR(SUB_DEPT_NBR,0,2) = "00" THEN REPLACE(SUB_DEPT_NBR,"00","") else REPLACE(SUB_DEPT_NBR,"0","") END as SubDeptNbr,
+  CAST(DEPT_NBR as STRING) AS CLASS_NBR,
+  Sub_Class_Nbr,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FiscalYear,
+  FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+    (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLastYr,
+  SUM( THD_NET_SLS ) AS SalesAmt
+FROM
+  `np-quotecenter.TABLEAU_PWR_USER.SALES_THD_SKU_DAY` sa
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(sa.sls_dt AS Date) = fc.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(sa.STR_NBR AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  FiscalYear >= 2019
+
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17
+UNION ALL
+SELECT
+  'THD Plan' AS Metric,
+  CAST(clpl.STR_NBR AS INT64) STR_NBR,
+  CAST(MER_DEPT_NBR as STRING) AS DEPT_NBR,
+  CASE WHEN SUBSTR(sub.SUB_DEPT_NBR,0,2) = "00" THEN REPLACE(sub.SUB_DEPT_NBR,"00","") else REPLACE(sub.SUB_DEPT_NBR,"0","") END as SubDeptNbr,
+  CAST(MER_CLASS_NBR as STRING) AS CLASS_NBR,
+  Null as Sub_Class_Nbr,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FSCL_YR AS FiscalYear,
+  FSCL_WK_NBR AS FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLastYr,
+  SUM(SLS_PLN_AMT)+sum(hdcom_allocs_pln_amt) AS SalesAmt
+FROM
+  `pr-edw-views-thd.FIN_PLAN.STR_CLASS_PLN_WKLY`clpl
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(clpl.FSCL_WK_END_DT AS Date) = FC.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(clpl.STR_NBR AS INT64) = CAST(sh.STR_NBR AS INT64)
+LEFT JOIN
+`np-quotecenter.temp_sjl.SubDeptLookup` sub
+ON CAST(clpl.MER_DEPT_NBR as INT64) = CAST(sub.DEPT_NBR as INT64) and CAST(sub.CLASS_NBR as INT64) = CAST(clpl.MER_CLASS_NBR as INT64)
+WHERE
+  FiscalYear = 2019
+--   >= (
+--   SELECT
+--     FiscalYear
+--   FROM
+--     `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar`
+--   WHERE
+--     CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) )
+--     AND FSCL_WK_END_DT <= DATE_TRUNC(current_date, week(SUNDAY))
+
+    
+
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17
+UNION ALL
+SELECT
+  'QC Current YTD Sales' AS Metric,
+  StoreNbr AS STR_NBR,
+  CAST(MerchandiseDepartmentNbr as STRING) AS DEPT_NBR,
+  CASE WHEN SUBSTR(SubDeptNbr,0,2) = "00" THEN REPLACE(SubDeptNbr,"00","") else REPLACE(SubDeptNbr,"0","") END as SubDeptNbr,
+  CAST(MerchandiseClassNbr as STRING) AS CLASS_NBR,
+  MerchandiseSubClassNbr as SUB_CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DistrictNbr,
+  DistrictNm,
+  FiscalYr AS FiscalYear,
+  FiscalYearWeekNbr as FiscalWeekNbr,
+  (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+    (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLastYr,
+  SUM(RetailSaleAmt) AS SalesAmt
+FROM
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`QCSalesAttribution` sa
+LEFT JOIN
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar` fc
+ON
+  CAST(sa.firstsolddt AS Date) = fc.CalendarDt
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(sa.StoreNbr AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  FiscalYear >= 2019
+--   >= (
+--   SELECT
+--     FiscalYear
+--   FROM
+--     `analytics-quotecenter-prod`.`PR_Opportunity`.`THDFiscalCalendar`
+--   WHERE
+--     CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)))
+--     AND FirstSoldDt <= DATE_TRUNC(current_date, week(SUNDAY)) 
+  AND MappedOrderSrc IN ('QC','COPY')
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17
+UNION ALL
+SELECT
+  'QC Last YTD Sales' AS Metric,
+  StoreNbr AS STR_NBR,
+  CAST(MerchandiseDepartmentNbr as STRING) AS DEPT_NBR,
+  CASE WHEN SUBSTR(SubDeptNbr,0,2) = "00" THEN REPLACE(SubDeptNbr,"00","") else REPLACE(SubDeptNbr,"0","") END as SubDeptNbr,
+  CAST(MerchandiseClassNbr as STRING) AS CLASS_NBR,
+    MerchandiseSubClassNbr as SUB_CLASS_NBR,
+  STR.STR_NM as StoreNm,
+  MKT.MKT_NBR as MarketNbr,
+  MKT.MKT_NM as MarketNm,
+  RGN.RGN_NBR as RegionNbr,
+  RGN.RGN_NM as RegionNm,
+  DIV.DIV_NBR as DivisionNbr,
+  DIV.DIV_NM as DivisionNm,
+  FiscalYr AS FiscalYear,
+  CASE WHEN FiscalYr = 2018 THEN (FiscalYearWeekNbr-1) ELSE FiscalYearWeekNbr END as FiscalWeekNbr,
+ (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLastYr,
+  SUM(RetailSaleAmt) AS SalesAmt
+FROM
+  `analytics-quotecenter-prod`.`PR_Opportunity`.`QCSalesAttribution` sa
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` edwfc
+ON
+  CAST(sa.firstsolddt AS Date) = edwfc.CAL_DT
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  CAST(sa.StoreNbr AS INT64) = CAST(sh.STR_NBR AS INT64)
+WHERE
+  CAST(FirstSoldDt as DATE) >= (SELECT LY_COMP_FSCL_YR_BGN_DT FROM `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` WHERE CAL_DT = DATE_TRUNC(current_date, week(SUNDAY)) ) 
+  AND FirstSoldDt <= (SELECT LY_COMP_FSCL_WK_END_DT FROM `pr-edw-views-thd.SHARED.CAL_PRD_HIER_FD` WHERE CAL_DT = DATE_TRUNC(current_date, week(SUNDAY)) )
+  AND MappedOrderSrc IN ('QC','COPY')
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16
+UNION ALL
+SELECT
+  'QC Sales Plan' AS Metric,
+  0 AS STR_NBR,
+  'n/a' AS DEPT_NBR,
+  CASE WHEN Merch_Department in ('27E','27L') THEN '27' ELSE Merch_Department END AS SubDeptNbr,
+  Class_Number AS CLASS_NBR,
+  Null as SUB_CLASS_NBR,
+  'n/a'  as StoreNm,
+  'n/a' as MarketNbr,
+  'n/a' as MarketNm,
+  SUBSTR(Region,0,4) as RegionNbr,
+  SUBSTR(Region,6,25) as  RegionNm,
+  'n/a' as DivisionNbr,
+  'n/a' as DivisionNm,
+  2019 AS FiscalYear,
+ Fiscal_Week as FiscalWeekNbr,
+ (SELECT
+    FiscalWeekNbr
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY))) AS FiscalWeekNbrPrev,
+  (
+  SELECT
+    SUBSTR(LastYearFiscalWeekKeyVal, 5, 2)
+  FROM
+    `analytics-quotecenter-prod`.`PR_Opportunity.THDFiscalCalendar`
+  WHERE
+    CalendarDt = DATE_TRUNC(current_date, week(SUNDAY)) ) AS FiscalWeekNbrLastYr,
+  Total_Sales_Plan AS SalesAmt
+FROM
+  `np-quotecenter.analytics_uat.tbl_Sales_Plan_2019_by_dimensions` sap
+LEFT JOIN
+  `pr-edw-views-thd.SHARED.STR_HIER` sh
+ON
+  SUBSTR(Region,0,4) = RGN.RGN_NBR
+GROUP BY
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18
+--)

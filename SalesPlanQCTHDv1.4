@@ -1,4 +1,4 @@
-  /*
+    /*
       View: SalesPlan1.1
       Purpose: This view is a union of THD Sales, THD Sales Plan, QC Sales Current Year, QC Sales Last Year, and QC Sales Plan. 
       The goal is to create a unioned view of all sales numbers and create further calculations in Tableau.
@@ -15,14 +15,14 @@
         Author: SJL
         Change Date: 2/22/2019 
       */
--- CREATE or REPLACE TABLE `np-quotecenter.temp_sjl.SalesPlanQCTHD` as
--- (
+CREATE or REPLACE TABLE `np-quotecenter.temp_sjl.SalesPlanQCTHD` as
+(
 SELECT
   'THD Total Sales' AS Metric,
   CAST(sa.STR_NBR as INT64) AS STR_NBR,
   CAST(DEPT_NBR as STRING) AS DEPT_NBR,
   CASE WHEN SUBSTR(SUB_DEPT_NBR,0,2) = "00" THEN REPLACE(SUB_DEPT_NBR,"00","") else REPLACE(SUB_DEPT_NBR,"0","") END as SubDeptNbr,
-  CAST(DEPT_NBR as STRING) AS CLASS_NBR,
+  CAST(CLASS_NBR as STRING) AS CLASS_NBR,
   Sub_Class_Nbr,
   STR.STR_NM as StoreNm,
   MKT.MKT_NBR as MarketNbr,
@@ -288,7 +288,7 @@ GROUP BY
 UNION ALL
 SELECT
   'QC Sales Plan' AS Metric,
-  0 AS STR_NBR,
+  Null AS STR_NBR,
   'n/a' AS DEPT_NBR,
   CASE WHEN Merch_Department in ('27E','27L') THEN '27' ELSE Merch_Department END AS SubDeptNbr,
   Class_Number AS CLASS_NBR,
@@ -341,4 +341,4 @@ GROUP BY
   16,
   17,
   18
---)
+)
